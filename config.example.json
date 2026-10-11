@@ -1,0 +1,8 @@
+{
+  "listen_host": "127.0.0.1",
+  "port": 8765,
+  "token": "请替换为至少24字符的随机令牌",
+  "xinyu_url": "http://127.0.0.1:7860",
+  "vosk_model": "models/vosk-model-small-cn-0.22",
+  "threshold": 500
+}

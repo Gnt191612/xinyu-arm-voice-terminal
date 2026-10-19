@@ -9,7 +9,8 @@ export LD_LIBRARY_PATH=$RUNTIME/usr/lib
 export PYTHONHOME=$RUNTIME/usr
 cd "$WORK" || exit 9
 
-printf '\n' | "$RUNTIME/usr/bin/python3" board_client.py \
+# 第一行回车=开始录一轮；第二轮读到 q=正常退出，避免 EOF 报错
+printf '\nq\n' | "$RUNTIME/usr/bin/python3" board_client.py \
   --server http://192.168.113.1:8765 \
   --capture-device plughw:2,0 \
   --library "$WORK/libpcm_gate.so" \

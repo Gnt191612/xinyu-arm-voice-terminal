@@ -6,6 +6,7 @@ setlocal
 cd /d "%~dp0"
 set "ADB="
 for /f "delims=" %%i in ('where adb 2^>nul') do if not defined ADB set "ADB=%%i"
+if not defined ADB if exist "%~dp0..\..\flash_tools\android-platform-tools\platform-tools\adb.exe" set "ADB=%~dp0..\..\flash_tools\android-platform-tools\platform-tools\adb.exe"
 if not defined ADB if exist "%~dp0..\..\..\flash_tools\android-platform-tools\platform-tools\adb.exe" set "ADB=%~dp0..\..\..\flash_tools\android-platform-tools\platform-tools\adb.exe"
 if not defined ADB (
   echo [¥ÌŒÛ] ’“≤ªµΩ adb°£

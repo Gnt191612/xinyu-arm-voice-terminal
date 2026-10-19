@@ -5,7 +5,7 @@ CFLAGS = -O2 -Wall -Wextra -march=armv7-a -marm
 all: libpcm_gate.so compare
 
 libpcm_gate.so: pcm_gate.S
-	$(CC) $(CFLAGS) -fPIC -shared -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -shared $(LDFLAGS) -o $@ $< $(LDLIBS)
 
 compare: compare.c reference.c pcm_gate.S
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)

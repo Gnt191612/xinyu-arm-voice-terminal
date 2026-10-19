@@ -17,7 +17,7 @@ def read_wav(data, max_seconds=MAX_SECONDS):
                 raise ValueError('音频必须是16000Hz、单声道、16位未压缩PCM WAV')
             count = source.getnframes()
             if not 0 < count <= RATE * max_seconds:
-                raise ValueError(f'音频长度必须大于0且不超过{max_seconds}秒')
+                raise ValueError('音频长度必须大于0且不超过{}秒'.format(max_seconds))
             pcm = source.readframes(count)
             if len(pcm) != count * 2:
                 raise ValueError('WAV数据被截断')

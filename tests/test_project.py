@@ -81,7 +81,7 @@ class Tests(unittest.TestCase):
 
     def test_http_flow(self):
         config = {'threshold': 500}
-        pipeline = Pipeline(config, simulate=True)
+        pipeline = Pipeline(dict(config, playback_target='board'), simulate=True)
         with tempfile.TemporaryDirectory() as temp:
             pipeline.records = Path(temp)
             token = 'test-only-token-01234567890123456789'

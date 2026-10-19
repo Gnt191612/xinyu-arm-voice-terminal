@@ -26,7 +26,7 @@ try:
         env=environment, capture_output=True, text=True, encoding='utf-8', timeout=20)
     (out / 'console.txt').write_text(result.stdout + result.stderr, encoding='utf-8')
     passed = result.returncode == 0 and '模拟回复' in result.stdout and '本轮失败' not in result.stdout
-    (out / 'result.json').write_text(json.dumps({'scope': '电脑模拟输入→参考门控→模拟桥接→回复文件，非真实模型、非实机',
+    (out / 'result.json').write_text(json.dumps({'scope': '电脑模拟输入→参考门控→模拟桥接→电脑播放模式响应；不实际播放，非真实模型、非实机',
         'returncode': result.returncode, 'passed': passed}, ensure_ascii=False, indent=2), encoding='utf-8')
     print(result.stdout)
     if not passed:

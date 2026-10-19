@@ -23,6 +23,12 @@ ROOT = Path(__file__).resolve().parent
 MAX_REQUEST = 2000000
 
 
+def play_on_pc(path):
+    """同步播放；返回后才允许下一轮录音，实际出声仍需人工确认。"""
+    import winsound
+    winsound.PlaySound(str(path), winsound.SND_FILENAME)
+
+
 def json_post(url, data, timeout):
     # 本机模型及板端专网请求不通过系统代理。
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -55,6 +61,9 @@ class Pipeline:
     def __init__(self, config, simulate=False):
         self.config = config
         self.simulate = simulate
+        self.playback_target = config.get('playback_target', 'pc')
+        if self.playback_target not in ('pc', 'board'):
+            raise ValueError('playback_target只能是pc或board')
         self.recognizer_model = None
         self.records = ROOT / 'records' / ('模拟联调' if simulate else '真实语音')
         self.records.mkdir(parents=True, exist_ok=True)
@@ -137,10 +146,20 @@ class Pipeline:
             record['spoken_truncated'] = len(reply) > 800
             (directory / 'reply.wav').write_bytes(spoken)
             record['reply_sha256'] = hashlib.sha256(spoken).hexdigest()
+            record['playback_target'] = self.playback_target
+            record['playback_command_completed'] = False
+            record['audible_output_verified'] = False
+            if self.playback_target == 'pc' and not self.simulate:
+                play_on_pc(directory / 'reply.wav')
+                record['playback_command_completed'] = True
             record['status'] = '成功'
-            return {'id': identifier, 'mode': record['mode'], 'recognized_text': text,
-                    'reply_text': reply, 'audio_wav': base64.b64encode(spoken).decode('ascii'),
+            result = {'id': identifier, 'mode': record['mode'], 'recognized_text': text,
+                    'reply_text': reply, 'playback_target': self.playback_target,
+                    'playback_command_completed': record['playback_command_completed'],
                     'spoken_truncated': record['spoken_truncated']}
+            if self.playback_target == 'board':
+                result['audio_wav'] = base64.b64encode(spoken).decode('ascii')
+            return result
         except Exception as exc:
             record['status'] = '失败'
             record['error'] = str(exc)
@@ -167,7 +186,8 @@ def make_handler(pipeline, token):
             if not self.authenticated():
                 self.send_json(401, {'error': '访问令牌错误'})
             elif self.path == '/health':
-                self.send_json(200, {'service': '心语语音桥接', 'simulate': pipeline.simulate})
+                self.send_json(200, {'service': '心语语音桥接', 'simulate': pipeline.simulate,
+                                     'playback_target': pipeline.playback_target})
             else:
                 self.send_json(404, {'error': '接口不存在'})
 
@@ -200,9 +220,13 @@ def make_handler(pipeline, token):
 def main():
     parser = argparse.ArgumentParser(description='心语电脑侧语音桥接')
     parser.add_argument('--config', default=str(ROOT / 'config.json'))
+    parser.add_argument('--playback-target', choices=('pc', 'board'),
+                        help='默认电脑外放；board为原有板端播放兼容模式')
     parser.add_argument('--simulate', action='store_true', help='明确使用模拟识别、模拟回复和测试音')
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding='utf-8-sig'))
+    if args.playback_target:
+        config['playback_target'] = args.playback_target
     if len(config.get('token', '')) < 24 or not config['token'].isascii() or config['token'].startswith('请替换'):
         raise SystemExit('请先设置至少24字符的ASCII随机访问令牌')
     server = HTTPServer((config['listen_host'], config['port']), make_handler(Pipeline(config, args.simulate), config['token']))

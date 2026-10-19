@@ -26,6 +26,8 @@ def main():
     output = ROOT / 'records/真实心语桥接联调' / uuid.uuid4().hex
     output.mkdir(parents=True)
     (output / 'input.wav').write_bytes(audio)
+    # 此工具只验证返回的合成文件，不主动通过电脑扬声器播放。
+    config['playback_target'] = 'board'
     pipeline = Pipeline(config, simulate=False)
     server = HTTPServer(('127.0.0.1', 0), make_handler(pipeline, config['token']))
     thread = threading.Thread(target=server.serve_forever, daemon=True)

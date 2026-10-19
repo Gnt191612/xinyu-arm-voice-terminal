@@ -54,7 +54,11 @@ def main():
     parser.add_argument('--records-dir', type=Path, default=ROOT / 'records' / '板端',
                         help='记录目录；Tina建议指定已确认可写且空间充足的挂载点')
     parser.add_argument('--threshold', type=int, default=500)
+    parser.add_argument('--seconds', type=int, default=5,
+                        help='每轮录音秒数，1~15；上限与audio_core.MAX_SECONDS一致')
     args = parser.parse_args()
+    if not 1 <= args.seconds <= 15:
+        parser.error('--seconds 必须在 1~15 之间（与桥接端 15 秒上限一致）')
     if args.list_audio:
         print(json.dumps({'devices': list_audio_devices(),
                           'scope': '仅枚举端点；USB声卡的录音口不是自动选中的麦克风，实际出声待验'},
@@ -80,7 +84,7 @@ def main():
     print('后端：' + gate.backend)
     while True:
         if not args.wav:
-            command = input('回车录制5秒；输入new重开20轮额度；输入q退出：').strip()
+            command = input('回车录制{0}秒；输入new重开20轮额度；输入q退出：'.format(args.seconds)).strip()
             if command == 'q':
                 break
             if command == 'new':
@@ -102,9 +106,11 @@ def main():
                 (directory / 'input.wav').write_bytes(wav)
             else:
                 subprocess.run(['arecord', '-D', args.capture_device, '-t', 'wav', '-f', 'S16_LE',
-                                '-r', '16000', '-c', '1', '-d', '5', str(directory / 'input.wav')], check=True, timeout=15)
+                                '-r', '16000', '-c', '1', '-d', str(args.seconds), str(directory / 'input.wav')],
+                               check=True, timeout=args.seconds + 10)
                 wav = (directory / 'input.wav').read_bytes()
             samples, _ = read_wav(wav)
+            record['seconds'] = args.seconds
             record['input_sha256'] = hashlib.sha256(wav).hexdigest()
             record['gate'] = gate.analyze(samples)
             if not record['gate']['accepted']:

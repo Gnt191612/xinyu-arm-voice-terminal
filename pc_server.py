@@ -18,6 +18,7 @@ import wave
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from audio_core import Gate, read_wav
+from tts_audio import normalize_tts_wave
 
 ROOT = Path(__file__).resolve().parent
 MAX_REQUEST = 2000000
@@ -58,9 +59,12 @@ def test_tone():
 
 
 class Pipeline:
-    def __init__(self, config, simulate=False):
+    def __init__(self, config, simulate=False, voice_gate=None, asr_selector=None, transcriber=None):
         self.config = config
         self.simulate = simulate
+        self.voice_gate = voice_gate
+        self.asr_selector = asr_selector
+        self.transcriber = transcriber
         self.playback_target = config.get('playback_target', 'pc')
         if self.playback_target not in ('pc', 'board'):
             raise ValueError('playback_target只能是pc或board')
@@ -78,7 +82,8 @@ class Pipeline:
             raise ValueError('audio_wav必须是有效Base64 WAV') from exc
         samples, pcm = read_wav(audio)
         # 电脑重复校验输入，记录中明确标为参考实现而非板侧汇编。
-        gate = Gate(threshold=self.config['threshold']).analyze(samples)
+        gate = (self.voice_gate(samples) if self.voice_gate is not None else
+                Gate(threshold=self.config['threshold']).analyze(samples))
         identifier = uuid.uuid4().hex
         directory = self.records / identifier
         directory.mkdir()
@@ -91,6 +96,9 @@ class Pipeline:
             asr_start = time.perf_counter()
             if self.simulate:
                 text = '模拟识别：我今天想和你聊聊天。'
+            elif self.transcriber is not None:
+                text = self.transcriber(pcm)
+                record['asr_backend'] = '本地SenseVoice int8，CPU双线程'
             else:
                 from vosk import Model, KaldiRecognizer
                 model_dir = Path(self.config['vosk_model'])
@@ -105,22 +113,40 @@ class Pipeline:
                         raise ValueError('请在本项目目录运行，并将Vosk模型放在models目录下')
                     self.recognizer_model = Model(model_name)
                 recognizer = KaldiRecognizer(self.recognizer_model, 16000)
+                if self.asr_selector is not None:
+                    recognizer.SetMaxAlternatives(5)
                 texts = []
+                raw_texts = []
+                corrections = []
+                def collect(payload):
+                    if self.asr_selector is None:
+                        texts.append(payload.get('text', ''))
+                    else:
+                        selection = self.asr_selector(payload)
+                        texts.append(selection['text'])
+                        raw_texts.append(selection['raw'])
+                        if selection['reason']:
+                            corrections.append(selection)
                 for offset in range(0, len(pcm), 8000):
                     if recognizer.AcceptWaveform(pcm[offset:offset + 8000]):
-                        texts.append(json.loads(recognizer.Result()).get('text', ''))
-                texts.append(json.loads(recognizer.FinalResult()).get('text', ''))
+                        collect(json.loads(recognizer.Result()))
+                collect(json.loads(recognizer.FinalResult()))
                 text = ''.join(texts).replace(' ', '').strip()
+                if self.asr_selector is not None:
+                    record['recognized_text_raw'] = ''.join(raw_texts)
+                    record['asr_corrections'] = corrections
             record['asr_seconds'] = time.perf_counter() - asr_start
             record['recognized_text'] = text
-            if not text:
+            if not text or not any(character.isalnum() for character in text):
                 raise ValueError('没有识别到文字，请检查麦克风或重新清晰说话')
             model_start = time.perf_counter()
             if self.simulate:
                 answer = {'response_text': '模拟回复：这是接口联调，不是心语模型的实际输出。'}
             else:
-                answer = json_post(self.config['xinyu_url'].rstrip('/') + '/chat',
-                                   {'history': history + [{'role': 'user', 'content': text}]}, 180)
+                model_request = {'history': history + [{'role': 'user', 'content': text}]}
+                if self.config.get('interaction_mode') == 'voice':
+                    model_request['interaction_mode'] = 'voice'
+                answer = json_post(self.config['xinyu_url'].rstrip('/') + '/chat', model_request, 180)
             reply = answer.get('response_text')
             if not isinstance(reply, str) or not reply.strip() or len(reply) > 4000:
                 raise ValueError('心语未返回有效response_text')
@@ -138,7 +164,9 @@ class Pipeline:
                     text_file.write_text(json.dumps({'text': reply[:800]}, ensure_ascii=False), encoding='utf-8')
                     subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'tts.ps1'),
                                     '-RequestFile', str(text_file), '-OutputFile', str(wave_file)],
+                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
                                    check=True, timeout=90, capture_output=True)
+                    normalize_tts_wave(wave_file)
                     spoken = wave_file.read_bytes()
                 if len(spoken) > 4000000:
                     raise ValueError('合成音频超过4MB限制')

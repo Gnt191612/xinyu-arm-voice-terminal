@@ -6,6 +6,13 @@ config.json
 records/
 models/
 .deps/
+.asr-deps/
+.asr-downloads/
+.realtime-deps/
+.realtime-build/
+.realtime-wheels/
+bridge-token.txt
+*.bak
 .venv/
 venv/
 __pycache__/

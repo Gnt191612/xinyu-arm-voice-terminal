@@ -1,0 +1,5 @@
+# 在独立环境安装；模型文件与系统音色不包含在依赖中。
+numpy==2.3.5
+sounddevice
+webrtcvad-wheels
+sherpa-onnx==1.13.8

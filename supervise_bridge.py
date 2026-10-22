@@ -63,6 +63,43 @@ def supervise(process, connected, clock=time.monotonic, sleep=time.sleep):
         stop_owned_process(process)
 
 
+def supervise_with_retry(adb, serial, build_command, connected, clock=time.monotonic,
+                         sleep=time.sleep, max_restarts=5, cooldown=3.0):
+    """会话意外退出时自动重跑（模型服务保持运行，快速恢复多轮交互）。
+    用户 Ctrl+C（KeyboardInterrupt）或正常退出码 0 时不重跑。"""
+    restarts = 0
+    while True:
+        try:
+            command = build_command()
+            process = subprocess.Popen(command, cwd=str(ROOT), start_new_session=os.name != 'nt',
+                                       stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print('桥接进程启动失败：%s' % exc, flush=True)
+            return 1
+        try:
+            code = supervise(process, connected, clock, sleep)
+        except KeyboardInterrupt:
+            stop_owned_process(process)
+            return 130
+        stop_owned_process(process)
+        # 正常结束、用户中断、USB待手动重启及断板均不自动重跑。
+        if code in (0, 130, 3, 4):
+            return code
+        if restarts >= max_restarts:
+            print('会话连续异常退出已达 %d 次，停止自动重跑。' % max_restarts, flush=True)
+            return code if code else 1
+        restarts += 1
+        print('会话中断（退出码 %s），%.0f 秒后自动重开第 %d 次；请保持开发板连接。'
+              % (code, cooldown, restarts), flush=True)
+        deadline = clock() + cooldown
+        while clock() < deadline:
+            if not connected():
+                print('开发板已断开，停止自动重跑。', flush=True)
+                return 4
+            sleep(0.2)
+
+
 def main():
     parser = argparse.ArgumentParser(description='开发板连接绑定的电脑桥接')
     parser.add_argument('--serial', default='20080411', help='仅监视这台开发板，不接受其他设备代替')
@@ -89,6 +126,13 @@ def main():
             command.remove('--start-xinyu')
         if args.prepare_only:
             command.append('--prepare-only')
+
+    if args.realtime:
+        def build_command():
+            return list(command)
+        return supervise_with_retry(adb, args.serial, build_command,
+                                    lambda: board_connected(adb, args.serial))
+
     process = subprocess.Popen(command, cwd=str(ROOT), start_new_session=os.name != 'nt',
                                stdin=subprocess.DEVNULL, stdout=sys.stdout, stderr=sys.stderr,
                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)

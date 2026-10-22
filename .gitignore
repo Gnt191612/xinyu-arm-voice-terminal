@@ -13,6 +13,8 @@ models/
 .realtime-wheels/
 bridge-token.txt
 *.bak
+*.bak-*
+*.partial
 .venv/
 venv/
 __pycache__/

@@ -142,7 +142,8 @@ def main():
                 except OSError:
                     return False
             if not healthy():
-                project = ROOT.parents[1] / '机器学习/情感陪伴参赛作业'
+                project = Path(os.environ.get('XINYU_PROJECT_DIR') or
+                               ROOT.parents[1] / '机器学习/情感陪伴参赛作业')
                 executable = project / '.venv/Scripts/python.exe'
                 application = project / '体验/chat_app.py'
                 if not executable.is_file() or not application.is_file():

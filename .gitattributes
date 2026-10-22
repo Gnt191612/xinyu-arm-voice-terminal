@@ -1,2 +1,3 @@
 # Linux板端脚本保持LF，防止Windows检出后出现回车解释错误。
 *.sh text eol=lf
+*.cmd text eol=crlf

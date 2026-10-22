@@ -52,7 +52,7 @@ def main():
              ('PCM边界', [-32768, 32767, 0, -1], 500), ('空帧', [], 500),
              ('零门限', [0], 0), ('最大门限', [-32768], 32768),
              ('最长合法帧', [-32768] * 65535, 32768)]
-    rng = random.Random(1132026)
+    rng = random.Random(20261023)
     for i in range(100):
         cases.append((f'随机{i}', [rng.randint(-32768, 32767) for _ in range(rng.randint(0, 320))], rng.randint(0, 32768)))
     results = []
@@ -107,7 +107,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     report = {'environment': 'Windows电脑上的Unicorn A32指令执行，非AXD，非T113实机，不报告板端时间或周期',
               'code_sha256': hashlib.sha256(code).hexdigest(), 'axf_sha256': hashlib.sha256(elf).hexdigest(),
-              'gnu_ads_instructions_equal': True, 'seed': 1132026, 'cases': results,
+              'gnu_ads_instructions_equal': True, 'seed': 20261023, 'cases': results,
               'all_passed': all(case['passed'] for case in results)}
     (out / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     (out / 'register_trace.json').write_text(json.dumps({'input_pcm16_head': [1000, -1000] * 4,

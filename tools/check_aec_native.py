@@ -8,7 +8,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-rng = random.Random(1132026)
+rng = random.Random(20261023)
 count = 320 * 600
 reference = [int(rng.uniform(-4000, 4000)) for _ in range(count)]
 near = [int(1500 * math.sin(2 * math.pi * 211 * i / 16000)) if i > count * 0.75 else 0 for i in range(count)]

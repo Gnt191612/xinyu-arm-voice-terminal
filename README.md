@@ -1,88 +1,34 @@
-# 心语 ARM 语音交互终端
+# T113 心语离线语音终端
 
-2026年10月21日更新：当前正式入口为演示_实时语音.cmd，支持持续监听、离线识别、外放回声消除、回答中插话及断板清理。新上电采用两阶段USB准备，不需要SDK虚拟机。安装边界、真实验收结果及未测事项见[实时演示说明](实时演示说明.md)，下文旧单轮流程保留为历史参考。
+T113的HOST口连接USB麦克风，OTG连接Windows电脑。板端持续采集并执行A32汇编预处理，电脑通过专用RNDIS网络接收音频，以SpeexDSP消回声、WebRTC VAD分句、SenseVoice本地识别、独立心语服务生成回复、Windows瑶瑶音色离线外放。支持回答中插话后提交新问题。
 
-本项目是嵌入式系统课程的协作开发原型：ARM板端采集音频，用A32汇编完成声音活动门控，再由电脑进行中文语音识别、调用既有心语文本服务、合成语音并通过电脑外放。当前请优先阅读[无HUB方案](无HUB方案.md)，下文旧板端播放步骤仅供兼容参考；USB音频、RNDIS和板端运行时仍需固件适配及实机验收。
+## 本机演示
 
-本仓库只包含新增源码与复现说明，**不包含心语权重、训练数据、语音记录、个人信息或访问令牌**。新增代码采用[MIT许可证](LICENSE)，第三方模型与组件仍遵守各自许可，详见[第三方说明](THIRD_PARTY_NOTICES.md)。部分代码由AI辅助编写，协作者须实际验证并理解其行为。
+**只使用 `演示_实时语音.cmd`。** TF卡保持插好、麦克风接HOST、OTG接电脑，打开电脑声音后双击。纯ADB冷启动时第一次仅提交临时USB准备并退出，等待网卡就绪后再双击一次；提示接通持续采集后再说话。不需要SDK虚拟机。
 
-## 方案和当前边界
+拔下OTG会结束本次会话及其创建的子进程，不控制键鼠。当前守护会对异常会话最多重试5次，间隔3秒；重试前检查开发板连接，断开则停止，不后台等待重新插线。用户独立启动的心语不属于本次进程树，不会被按名称关闭。不要并行启动多个入口。
 
-目标硬件为LCPI-PC-T113、USB麦克风以及USB供电、3.5mm输入的HA-210音箱。硬件已到货，实物芯片标T113-S3。麦克风USB传输音频，音箱USB只供电，3.5mm才是音频输入。固件、驱动、网络、ABI和音频接线仍待实测确认，不保证任意镜像即插即用。环境清点与部署见[商家资料核查与部署](商家资料核查与部署.md)。
+## 从零复现
 
-流程为按回车录制5秒（`--seconds` 可调 1～15 秒） → ARM处理20毫秒PCM帧 → 有连续声音才上传 → Vosk转文字 → 心语回复 → Windows中文语音合成 → 电脑外放（无HUB方案默认；板端播放仅兼容保留）。采用半双工，不实现唤醒词、全双工或回声消除。声音门限不是人声分类器，持续噪声可能误触发。
+见 [复现指南](复现指南.md)，包含材料、电脑隔离依赖、模型下载校验、AEC构建、板端前置条件、部署和验收步骤。
 
-当前已验证：电脑端自动测试、A32实际机器码执行、模拟客户端、中文TTS与Vosk，以及**T113实机整条链路一轮**（板端USB麦克风采集 → 板端 `libpcm_gate.so` 汇编门控 → RNDIS上传 → 识别 → 心语 → 合成 → 电脑外放，用户确认听到）。尚未验证：连续多轮稳定性与板端本地播放。详见[验证状态](验证状态.md)。电脑时间、指令执行次数和ARM7模拟结果不代表T113性能。
+**本仓库不是完整固件或心语权重合集。** 心语是独立依赖，需另行取得其服务及模型使用权；未获得时不能复现相同人物风格。原厂T113镜像也不是插卡即可运行：需USB Audio、ConfigFS RNDIS、ARM-musl Python3.5.6/ctypes及匹配的动态库。没有这些条件请先完成板端准备，不能以模拟回复冒充完整演示。
 
-## 演示快捷方式（Windows）
+新电脑先安装Windows x64、Python3.11 x64、官方ADB平台工具、MinGW GCC和中文瑶瑶语音，再运行`环境准备.cmd`。此入口会联网下载依赖及公开ASR模型，不启动板端配置或心语；正常演示不下载。现有配置不会被覆盖。首次下载后应先完成指南中的各项检查。
 
-| 文件 | 作用 |
-|------|------|
-| `演示_一键上场.cmd` | **一步到位**：自检 → 起桥接 → 板端录一轮 → 打印识别与回复；条件不满足会停住并说明怎么修 |
-| `演示_0_演示前自检.cmd` | 只做检查：adb / 板端 usb0 / 电脑网卡 / USB 麦克风 / 采集增益 / 心语 / 桥接端口 |
-| `演示_1_启动电脑桥接.cmd` | 单独启动电脑桥接（真实模式，监听 `config.json` 中的地址，默认 `192.168.113.1:8765`） |
-| `演示_2_板端跑一轮.cmd` | 自动找 adb → 推送板端脚本 → 提示说话 → 板端录一轮并走完整链路 |
-| `演示_3_板端终端.cmd` | 打开板端 shell，排查用 |
-| `tools/board_round.sh` | 板端执行体：`arecord plughw:2,0` → 汇编门控 → RNDIS 上传（录音秒数用 `ROUND_SECONDS`，默认 8 秒） |
+## 文件
 
-正常演示只需双击 `演示_一键上场.cmd`。脚本会自动完成自检、启动桥接（新窗口）并提示你说一句话；
-说完电脑念出心语回复。想再来一轮时按提示输入 `y`。板端需已部署
-`/mnt/UDISK/xinyu-runtime35`（Python 3.5.6）与 `/mnt/UDISK/xinyu-arm-check`（客户端与 `libpcm_gate.so`）。
+- `演示_实时语音.cmd`：唯一正式演示入口；`环境准备.cmd`：首次电脑资源准备。
+- `supervise_bridge.py`、`offline_demo.py`：断线守护及两阶段USB准备。
+- `board_stream.py`、`arm/pcm_gate.S`：持续采集和真实ARM计算。
+- `realtime_session.py`、`realtime_audio.py`、`realtime_worker.py`：实时会话、AEC、播放及识别工作任务。
+- `tools/`：环境准备、显式板端部署、构建及诊断；`tests/`：自动测试。
+- `integration/task_intent.py`：提供给独立心语服务的明确任务意图集成参考，不是语言模型。
 
-## 快速开始
+`pc_server.py`、`board_client.py`及Vosk路径仅供兼容与测试，不是正式实时流程。不再提供旧固定8秒录音的一键演示入口。
 
-电脑端使用Windows64位和Python3.11；离线门控和模拟接口测试也可在其他支持Python的平台运行。心语是独立服务，本仓库不重新加载或训练它。
+## 验收与许可
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-test.txt
-.\.venv\Scripts\python.exe tools/init_config.py
-.\.venv\Scripts\python.exe tools/run_tests.py
-.\.venv\Scripts\python.exe tools/check_client.py
-```
+此前实物测试已由使用者确认故事打断、早餐续答及拔线退出；2026年10月23日使用者确认实物展示完成。不同麦克风、音箱、房间与固件仍需重新验收，AEC效果不是普适保证。本轮发布回归与清理记录见本地清理记录；不会把自动测试称为新电脑和新板的完整实物验收。
 
-`init_config.py`只在配置不存在时创建随机令牌，不覆盖现有配置。`config.json`不得提交。以上测试无需心语或真实设备，模拟回复和440Hz测试音都有明确标记，不是实际模型输出。
-
-下载中文识别模型，校验ZIP后解压：
-
-```powershell
-New-Item -ItemType Directory -Path models -Force
-curl.exe -L --fail --ssl-revoke-best-effort -o models/vosk-model-small-cn-0.22.zip https://alphacephei.com/vosk/models/vosk-model-small-cn-0.22.zip
-.\.venv\Scripts\python.exe tools/prepare_model.py
-.\.venv\Scripts\python.exe tools/check_speech.py
-```
-
-模型官方标注约42MB。准备脚本检查体积、ZIP CRC和路径安全，记录本次SHA256；它不是官方签名验证。请从项目目录运行，避免Windows下Vosk的中文绝对路径兼容问题。`check_speech.py`生成合成语音并识别，不自动播放、不冒充真人输入。
-
-启动你有权使用的心语服务，默认本机地址`http://127.0.0.1:7860`。服务应支持GET `/health`与POST `/chat`：
-
-```json
-{"history": [{"role": "user", "content": "你好"}]}
-```
-
-回复须包含非空`response_text`。心语项目可能需要独立访问授权，不承诺公开可下载其权重。确认正确模型版本后启动真实桥接：
-
-```powershell
-.\.venv\Scripts\python.exe tools/check_xinyu.py
-.\.venv\Scripts\python.exe pc_server.py
-```
-
-桥接默认仅监听127.0.0.1:8765。板端接入需使用可信专网的实际IP和随机令牌，不将服务开放到公网。完整配置、板端编译与取证见[运行说明](运行说明.md)。
-
-## 文件职责
-
-- `audio_core.py`：PCM16 WAV校验、参考门控和ARM动态库接口。
-- `pc_server.py`：Vosk、心语HTTP调用、Windows中文TTS和原始记录。
-- `board_client.py`：ALSA录音、门控、上传和播放；文件联调需显式`--reference`。
-- `arm/pcm_gate.S`：T113 Linux工具链使用的A32汇编。
-- `arm/pcm_gate_ads.s`：相同指令的ADS语法版本。
-- `arm/compare.c`、`reference.c`、`Makefile`：同输入C与汇编结果及时间对比。
-- `arm/axd_demo.c`、`axd_start.s`：课堂独立运行和取证源码。
-- `tools/verify_arm.py`：Unicorn执行ADS生成的实际机器码，记录寄存器和输入内存变化。
-- `tests/test_project.py`：正常、边界、干扰与协议测试。
-
-汇编实质使用LDRSH后变址、RSBLT、ADD、SUBS/BNE、MUL/CMP、条件执行和BX返回。空帧无效，阈值相等有效，`-32768`先符号扩展再取绝对值；样本数最大65535保证累加与门限乘积不溢出。r0-r2传参、r0返回，只使用调用者保存寄存器。不能以无关加法或反汇编截图替代项目验证。
-
-## 协作
-
-按[协作说明](CONTRIBUTING.md)建立功能分支、提交小改动和测试证据。不提交私人日志、访问令牌或模型文件，不伪造实机成功，不预设汇编比优化C更快。首次公开发布是可验证的开发原型，不是最终课程报告。
+新增源码按MIT发布，第三方固件、模型、Python、SpeexDSP、Windows音色和ADS各遵其原许可，见THIRD_PARTY_NOTICES.md。配置令牌、录音、对话、私有模型、商家软件包和虚拟机均不入公开仓库。
